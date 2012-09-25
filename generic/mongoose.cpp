@@ -13,10 +13,11 @@
 //======================================================================
 
 #include "THpp.hpp"
-
+#include<iostream>
 #include "mongoose.h"
 
 using namespace TH;
+using namespace std;
 
 #ifndef __READSHORT_DEF_240912__
 #define __READSHORT_DEF_240912__
@@ -46,26 +47,43 @@ inline void readV3D(char* b, realT* dest) {
 }
 #endif
 
-static int libmongoose_(GetMongooseData)(lua_State *L) {
-  setLuaState(L);
-  int lmongoose = FromLuaStack<int>(1);
-  THassert(lua_islightuserdata(L, lmongoose));
-  Mongoose & mongoose = *((Mongoose*)lua_touserdata(L, lmongoose));
-  Tensor<real> output = FromLuaStack<Tensor<real> >(2);
-  THassert(output.size(0) == 18);
-  real* outputdata = output.data();
-  
 
+
+
+static int libmongoose_(InitMongoose)(lua_State* L) {
+  setLuaState(L);
+  string tty = FromLuaStack<string>(1);
+  Tensor<real> data = FromLuaStack<Tensor<real> >(2);
+  THassert(data.size(0) == 19);
+  Mongoose<real>* mongoose = new Mongoose<real>(tty, data.data());
+  if (mongoose->file == NULL)
+    lua_pushnil(L);
+  else
+    lua_pushlightuserdata(L, (void*)mongoose);
+  return 1;
+}
+
+static int libmongoose_(ReleaseMongoose)(lua_State* L) {
+  setLuaState(L);
+  Mongoose<real>* mongoose = (Mongoose<real>*)lua_touserdata(L, 1);
+  delete mongoose;
+  return 0;
+}
+
+static int libmongoose_(FetchMongooseData)(lua_State *L) {
+  setLuaState(L);
+  Mongoose<real> & mongoose = *((Mongoose<real>*)lua_touserdata(L, 1));
+  
   size_t n = fread(mongoose.buffer+mongoose.i_buffer,
 		   sizeof(char), LINE_SIZE-mongoose.i_buffer, mongoose.file);
   mongoose.i_buffer += n;
   if (mongoose.buffer[0] != 0) {
     // corrupted line. drop it.
     mongoose.i_buffer = 0;
-    return false;
+    return 0;
   }
   if (mongoose.i_buffer < LINE_SIZE)
-    return false;
+    return 0;
   mongoose.i_buffer = 0;
   char checksum = 0;
   for (int i = 0; i < LINE_SIZE-1; ++i)
@@ -74,22 +92,23 @@ static int libmongoose_(GetMongooseData)(lua_State *L) {
     checksum = 1;
   if (checksum != mongoose.buffer[LINE_SIZE-1])
     // checksum error. drop the line.
-    return false;
+    return 0;
   
-  readV3D<real>(mongoose.buffer+6, outputdata);
-  readV3D<real>(mongoose.buffer+12, outputdata+3);
-  readV3D<real>(mongoose.buffer+18, outputdata+6);  
+  mongoose.data[18] = readLong(mongoose.buffer+1);
   if (mongoose.buffer[0] & 64) {
-    readV3D<real>(mongoose.buffer+24, outputdata+9);
-    PushOnLuaStack<bool>(true);
+    //readV3D<real>(mongoose.buffer+6, mongoose.data);
+    //readV3D<real>(mongoose.buffer+12, mongoose.data+3);
+    //readV3D<real>(mongoose.buffer+18, mongoose.data+6);  
+    //readV3D<real>(mongoose.buffer+24, mongoose.data+9);
   } else {
+    readV3D<real>(mongoose.buffer+6, mongoose.data);
+    readV3D<real>(mongoose.buffer+12, mongoose.data+3);
+    readV3D<real>(mongoose.buffer+18, mongoose.data+6);  
     for (int i = 8; i >= 0; --i)
-      outputdata[i+9] = (real)(readShort(mongoose.buffer+24+2*i)) * (real)0.01;
-    PushOnLuaStack<bool>(false);
+      mongoose.data[i+9] = (real)(readShort(mongoose.buffer+24+2*i)) * (real)0.01;
   }
-  PushOnLuaStack<long>(readLong(mongoose.buffer+1));
 
-  return 2;
+  return 0;
 }
 
 //============================================================
@@ -97,7 +116,9 @@ static int libmongoose_(GetMongooseData)(lua_State *L) {
 //
 
 static const luaL_reg libmongoose_(Main__) [] = {
-  {"getMongooseData",     libmongoose_(GetMongooseData)},
+  {"initMongoose", libmongoose_(InitMongoose)},
+  {"releaseMongoose", libmongoose_(ReleaseMongoose)},
+  {"fetchMongooseData",     libmongoose_(FetchMongooseData)},
   {NULL, NULL}  /* sentinel */
 };
 

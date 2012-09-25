@@ -96,6 +96,9 @@ template<> inline void PushOnLuaStack<float>(lua_State* L, const float & topush)
 template<> inline void PushOnLuaStack<double>(lua_State* L, const double & topush) {
   lua_pushnumber(L, topush);
 }
+template<> inline void PushOnLuaStack<bool>(lua_State* L, const bool & topush) {
+  lua_pushboolean(L, topush);
+}
 
 template<typename T> inline T FromLuaStack(int i) {
   return FromLuaStack<T>(L_global, i);
