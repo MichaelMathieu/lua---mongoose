@@ -7,6 +7,26 @@ extern "C" {
 using namespace std;
 using namespace TH;
 
+#include "mongoose.h"
+
+static int InitMongoose(lua_State* L) {
+  setLuaState(L);
+  string tty = FromLuaStack<string>(1);
+  Mongoose* mongoose = new Mongoose(tty);
+  if (mongoose->file == NULL)
+    lua_pushnil(L);
+  else
+    lua_pushlightuserdata(L, (void*)mongoose);
+  return 1;
+}
+
+static int ReleaseMongoose(lua_State* L) {
+  setLuaState(L);
+  Mongoose* mongoose = (Mongoose*)lua_touserdata(L, 1);
+  delete mongoose;
+  return 0;
+}
+
 //============================================================
 // Register functions in LUA
 //
@@ -17,6 +37,8 @@ using namespace TH;
 #define libmongoose_(NAME)  TH_CONCAT_3(libmongoose_, Real, NAME)
 
 static const luaL_reg libmongoose_init [] = {
+  {"initMongoose", InitMongoose},
+  {"releaseMongoose", ReleaseMongoose},
   {NULL, NULL}
 };
 
