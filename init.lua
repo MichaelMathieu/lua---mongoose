@@ -14,7 +14,7 @@ mongoose = {}
 require 'libmongoose'
 
 function mongoose.new(tty)
-   local mgdata = torch.Tensor(19):zero()
+   local mgdata = torch.Tensor(20):zero()
    local mg = libmongoose.initMongoose('/dev/ttyUSB0')
    if mg == nil then
       error("Could not open tty "..tty.." . Please check that the path is right and that you have the correct permission (you might have to join the group dialout).")
@@ -31,8 +31,24 @@ function mongoose.fetchData(mg)
 end
 
 function mongoose.getRotmat(mg)
-   if mg[2][19] ~= 0 then
-      return mg[2][{{10,18}}]
+   if mg[2][1] ~= 0 then
+      return mg[2][{{11,19}}]
+   else
+      return nil
+   end
+end
+
+function mongoose.getAccel(mg)
+   if mg[2][1] ~= 0 then
+      return mg[2][{{2,4}}]
+   else
+      return nil
+   end
+end
+
+function mongoose.getTime(mg)
+   if mg[2][1] ~= 0 then
+      return mg[2][1]
    else
       return nil
    end

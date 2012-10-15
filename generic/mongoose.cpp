@@ -16,6 +16,8 @@
 #include<iostream>
 #include "mongoose.h"
 
+//#define VERBOSE_DEBUG
+
 using namespace TH;
 using namespace std;
 
@@ -32,19 +34,25 @@ inline long readLong(unsigned char* b) {
 
 template<typename realT>
 inline void readV3D(unsigned char* b, realT* dest) {
-  dest[0] = (realT)(readShort(b  )) * (realT)0.1;
-  dest[1] = (realT)(readShort(b+2)) * (realT)0.1;
-  dest[2] = (realT)(readShort(b+4)) * (realT)0.1;
+  dest[0] = (realT)(readShort(b  )) * (realT)0.2;
+  dest[1] = (realT)(readShort(b+2)) * (realT)0.2;
+  dest[2] = (realT)(readShort(b+4)) * (realT)0.2;
+}
+template<typename realT>
+inline void readV3Dacc(unsigned char* b, realT* dest) {
+  dest[0] += (realT)(readShort(b  )) * (realT)0.2;
+  dest[1] += (realT)(readShort(b+2)) * (realT)0.2;
+  dest[2] += (realT)(readShort(b+4)) * (realT)0.2;
 }
 #endif
 
 
 bool libmongoose_(FetchMongooseElem)(Mongoose & mongoose, real* data) {
-  size_t n = fread(mongoose.buffer+mongoose.i_buffer, sizeof(unsigned char), LINE_SIZE-mongoose.i_buffer, mongoose.file);
+  ssize_t n = fread(mongoose.buffer+mongoose.i_buffer, sizeof(unsigned char), LINE_SIZE-mongoose.i_buffer, mongoose.file);
   if (n < 0)
-    cout << "ARGHHHHHHHHHHHZZZZZZZZ" << endl;
+    return false;
 
-  /* DEBUG
+#ifdef VERBOSE_DEBUG
   int ct = 0;
   cout << mongoose.i_buffer << " " << n << " | ";
   for (int i = 0; i < mongoose.i_buffer+n; ++i) {
@@ -52,27 +60,29 @@ bool libmongoose_(FetchMongooseElem)(Mongoose & mongoose, real* data) {
     if (++ct % 10 == 0) cout << "* ";
   }
   cout << endl;
-  */
+#endif
 
   for (int i = mongoose.i_buffer+n-1; i >= max(mongoose.i_buffer, 1); --i)
     if (mongoose.buffer[i] == 0) {
       // beginning of line at the wrong place. drop what was before
       memmove(mongoose.buffer, mongoose.buffer+i, (mongoose.i_buffer+n-i)*sizeof(char));
       mongoose.i_buffer += n-i;
+#ifdef VERBOSE_DEBUG
       cout << "zero" << endl;
+#endif
       return true;
     }
   mongoose.i_buffer += n;
   if (mongoose.buffer[0] != 0) {
     // corrupted line. drop it.
+#ifdef VERBOSE_DEBUG
     cout << "corrupted line" << endl;
+#endif
     mongoose.i_buffer = 0;
     return true;
   }
   if (mongoose.i_buffer < LINE_SIZE)
     return false;
-  if (mongoose.i_buffer > LINE_SIZE)
-    cout << "ERROR !!!! " << mongoose.i_buffer << endl;
   mongoose.i_buffer = 0;
   unsigned char checksum = 0;
   for (int i = 0; i < LINE_SIZE-1; ++i)
@@ -80,8 +90,10 @@ bool libmongoose_(FetchMongooseElem)(Mongoose & mongoose, real* data) {
   if (checksum == 0)
     checksum = 1;
   if (checksum != mongoose.buffer[LINE_SIZE-1]) {
+    //  checksum error. drop the line.
+#ifdef VERBOSE_DEBUG
     cout << "corrupted line (chksum)" << endl;
-    // checksum error. drop the line.
+#endif
     return true;
   }
   
@@ -92,11 +104,12 @@ bool libmongoose_(FetchMongooseElem)(Mongoose & mongoose, real* data) {
     //readV3D<real>(mongoose.buffer+18, mongoose.data+6);  
     //readV3D<real>(mongoose.buffer+24, mongoose.data+9);
   } else {
-    readV3D<real>(mongoose.buffer+6, data);
-    readV3D<real>(mongoose.buffer+12, data+3);
-    readV3D<real>(mongoose.buffer+18, data+6);  
+    data[0] = readLong(mongoose.buffer+1);
+    readV3Dacc<real>(mongoose.buffer+6, data+1);
+    readV3D<real>(mongoose.buffer+12, data+4);
+    readV3D<real>(mongoose.buffer+18, data+7);
     for (int i = 8; i >= 0; --i)
-      data[i+9] = (real)(readShort(mongoose.buffer+24+2*i)) * (real)0.001;
+      data[i+10] = (real)(readShort(mongoose.buffer+24+2*i)) * (real)0.0001;
   }
   return true;
 }
@@ -107,6 +120,7 @@ static int libmongoose_(FetchMongooseData)(lua_State *L) {
   Tensor<real> dataL = FromLuaStack<Tensor<real> >(2);
   real* data = dataL.data();
   
+  memset(data+1, 0, 3*sizeof(real));
   while (libmongoose_(FetchMongooseElem)(mongoose, data));
 
   return 0;
